@@ -56,11 +56,24 @@
                     <label class="block text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-2">
                         <i class="fa-solid fa-file-excel mr-1"></i> Excel / CSV Tabellenblatt einlesen
                     </label>
-                    <label class="flex items-center justify-center w-full p-3 bg-slate-950 border border-dashed border-slate-700 hover:border-indigo-500 rounded-xl cursor-pointer transition text-xs text-slate-400 hover:text-slate-200">
+                    <label class="flex items-center justify-center w-full p-3 bg-slate-950 border border-dashed border-slate-700 hover:border-indigo-500 rounded-xl cursor-pointer transition text-xs text-slate-400 hover:text-slate-200 mb-3">
                         <i class="fa-solid fa-upload mr-2 text-indigo-400"></i>
                         <span id="file-label">Excel-Datei (.xlsx, .csv) auswählen</span>
                         <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" class="hidden">
                     </label>
+
+                    <!-- Image / OCR Upload Section -->
+                    <label class="block text-xs font-semibold text-teal-400 uppercase tracking-wider mb-2">
+                        <i class="fa-solid fa-camera mr-1"></i> Foto / Bild vom Trainingsplan einlesen (AI Scan)
+                    </label>
+                    <label class="flex items-center justify-center w-full p-3 bg-slate-950 border border-dashed border-teal-800 hover:border-teal-500 rounded-xl cursor-pointer transition text-xs text-slate-400 hover:text-slate-200">
+                        <i class="fa-solid fa-image mr-2 text-teal-400"></i>
+                        <span id="image-label">Foto von Tabelle auswählen / knipsen</span>
+                        <input type="file" id="image-file-input" accept="image/*" class="hidden">
+                    </label>
+                    <div id="image-loading" class="hidden mt-2 p-3 bg-teal-950/40 border border-teal-800/50 rounded-xl text-center text-xs text-teal-300 animate-pulse">
+                        <i class="fa-solid fa-spinner fa-spin mr-2 text-teal-400"></i> Bild wird mit KI analysiert und in Übungen umgewandelt...
+                    </div>
                 </div>
             </div>
 
@@ -251,6 +264,9 @@
         const viewTimer = document.getElementById('view-timer');
         const routineSelect = document.getElementById('routine-select');
         const excelFileInput = document.getElementById('excel-file-input');
+        const imageFileInput = document.getElementById('image-file-input');
+        const imageLabel = document.getElementById('image-label');
+        const imageLoading = document.getElementById('image-loading');
         const fileLabel = document.getElementById('file-label');
         const defaultRestInput = document.getElementById('default-rest');
         const totalRoundsInput = document.getElementById('total-rounds');
@@ -472,6 +488,97 @@
                 }
             };
             reader.readAsArrayBuffer(file);
+        });
+
+        // AI Image / Photo Parsing with Gemini API
+        imageFileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            imageLabel.textContent = file.name;
+            imageLoading.classList.remove('hidden');
+
+            try {
+                // Convert Image file to base64
+                const base64Data = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result.split(',')[1]);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
+
+                const systemPrompt = "Du bist ein erfahrener Fitness-Assistent. Analysiere das Hochgeladene Bild eines Trainingsplans/einer Tabelle. Extrahiere alle Übungen mit ihren Namen, Ausführungsdauern in Sekunden (oder 0 falls nur Wdh.), Wiederholungen (reps) und Anzahl der Sätze (sets). Behalte exakt die Struktur bei.";
+                const userPrompt = "Lies die Tabelle im Bild aus und gib mir das Ergebnis als strukturiertes JSON Array von Übungen zurück. Das Schema pro Übung lautet: name (string), duration (number in Sekunden, z.B. 60 für 1 min, 45 für 45s, 0 wenn nur Wiederholungen), reps (string, z.B. '40 Wdh' oder leer ''), sets (number, z.B. 2 wenn '2x' dabei steht, sonst 1).";
+
+                const payload = {
+                    contents: [{
+                        role: "user",
+                        parts: [
+                            { text: userPrompt },
+                            {
+                                inlineData: {
+                                    mimeType: file.type || "image/jpeg",
+                                    data: base64Data
+                                }
+                            }
+                        ]
+                    }],
+                    systemInstruction: {
+                        parts: [{ text: systemPrompt }]
+                    },
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: "ARRAY",
+                            items: {
+                                type: "OBJECT",
+                                properties: {
+                                    name: { type: "STRING" },
+                                    duration: { type: "INTEGER" },
+                                    reps: { type: "STRING" },
+                                    sets: { type: "INTEGER" }
+                                },
+                                required: ["name", "duration", "reps", "sets"]
+                            }
+                        }
+                    }
+                };
+
+                const apiKey = ""; // Canvas runtime key
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+
+                if (result.candidates && result.candidates[0]?.content?.parts[0]?.text) {
+                    const parsedExercises = JSON.parse(result.candidates[0].content.parts[0].text);
+                    if (Array.isArray(parsedExercises) && parsedExercises.length > 0) {
+                        currentWorkout = parsedExercises.map(ex => ({
+                            name: ex.name || 'Übung',
+                            duration: parseInt(ex.duration) || 0,
+                            reps: ex.reps || '',
+                            sets: parseInt(ex.sets) || 1
+                        }));
+                        renderExerciseList();
+                        routineSelect.value = 'custom';
+                    } else {
+                        alert('Konnte keine Übungen im Bild erkennen.');
+                    }
+                } else {
+                    alert('Fehler bei der Bildanalyse. Bitte versuche es mit einem klareren Foto.');
+                }
+
+            } catch (err) {
+                console.error("AI Image scan error:", err);
+                alert('Fehler beim Analysieren des Fotos: ' + err.message);
+            } finally {
+                imageLoading.classList.add('hidden');
+            }
         });
 
         // Toggle Sound
