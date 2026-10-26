@@ -1,0 +1,593 @@
+```html
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flexibler Intervall & Workout Timer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            touch-action: manipulation;
+        }
+        .animate-pulse-fast {
+            animation: pulse 0.75s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col justify-between">
+
+    <!-- Header -->
+    <header class="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-900/50 backdrop-blur">
+        <div class="flex items-center gap-3">
+            <i class="fa-solid fa-stopwatch text-indigo-500 text-2xl"></i>
+            <h1 class="text-xl font-bold tracking-wide">FlexiTimer Pro</h1>
+        </div>
+        <button id="toggle-sound-btn" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm flex items-center gap-2 transition">
+            <i id="sound-icon" class="fa-solid fa-volume-high text-emerald-400"></i>
+            <span id="sound-text">Ton An</span>
+        </button>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 max-w-lg w-full mx-auto p-4 flex flex-col justify-center">
+
+        <!-- VIEW 1: PRESET & WORKOUT BUILDER -->
+        <div id="view-setup" class="space-y-6">
+
+            <!-- Presets Dropdown -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
+                <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Trainingsplan auswählen</label>
+                <div class="flex gap-2">
+                    <select id="routine-select" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500">
+                        <option value="preset-athletik">Athletik Kreis (Aus Tabellenfoto)</option>
+                        <option value="preset-tabata">Klassisches Tabata (4 Min)</option>
+                        <option value="custom">-- Eigenes Workout erstellen --</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Global Settings (Default Pause & Rounds) -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-4">
+                <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider">Workout Einstellungen</h2>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-xs text-slate-400 block mb-1">Standard Pause (Sek)</label>
+                        <input type="number" id="default-rest" value="30" min="0" max="300" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-amber-400 font-bold focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400 block mb-1">Zirkel-Runden gesamt</label>
+                        <input type="number" id="total-rounds" value="1" min="1" max="10" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-indigo-400 font-bold focus:outline-none focus:border-indigo-500">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Exercises List -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-4">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider">Übungen im Zirkel</h2>
+                    <span id="exercise-count" class="text-xs bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full">0 Übungen</span>
+                </div>
+
+                <div id="exercise-list" class="space-y-3 max-h-80 overflow-y-auto pr-1">
+                    <!-- Dynamic exercise cards generated here -->
+                </div>
+
+                <button id="add-exercise-btn" class="w-full py-2.5 border-2 border-dashed border-slate-700 hover:border-slate-500 text-slate-400 hover:text-slate-200 rounded-xl text-sm font-medium transition flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-plus"></i> Übung hinzufügen
+                </button>
+            </div>
+
+            <!-- Start Button -->
+            <button id="start-workout-btn" class="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-lg rounded-2xl shadow-lg shadow-emerald-950/50 uppercase tracking-wider transition transform active:scale-95 flex items-center justify-center gap-2">
+                <i class="fa-solid fa-play"></i> Workout Starten
+            </button>
+        </div>
+
+        <!-- VIEW 2: ACTIVE TIMER RUNNING -->
+        <div id="view-timer" class="hidden flex flex-col items-center justify-center text-center space-y-6">
+
+            <!-- Round & Status Header -->
+            <div class="space-y-1">
+                <span id="phase-badge" class="px-4 py-1.5 rounded-full text-xs font-extrabold uppercase tracking-widest bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                    Belastung
+                </span>
+                <p id="round-indicator" class="text-slate-400 text-sm font-semibold pt-2">Runde 1 von 2</p>
+            </div>
+
+            <!-- Current Exercise Title -->
+            <div class="min-h-[4rem] flex flex-col justify-center px-4">
+                <h2 id="current-title" class="text-2xl sm:text-3xl font-extrabold text-white leading-tight">Plank + Bein Seitlich ran</h2>
+                <p id="current-subtext" class="text-slate-400 text-xs mt-1">Nächste Übung: Seitstütz rechts</p>
+            </div>
+
+            <!-- Circular Progress / Digital Display -->
+            <div class="relative w-64 h-64 sm:w-72 sm:h-72 flex items-center justify-center">
+                <!-- Outer Progress Circle -->
+                <svg class="w-full h-full transform -rotate-90">
+                    <circle cx="50%" cy="50%" r="42%" class="stroke-slate-800" stroke-width="12" fill="transparent" />
+                    <circle id="timer-progress" cx="50%" cy="50%" r="42%" class="stroke-emerald-500 transition-all duration-300" stroke-width="12" fill="transparent" stroke-linecap="round" stroke-dasharray="750" stroke-dashoffset="0" />
+                </svg>
+
+                <!-- Digital Time Display inside Circle -->
+                <div class="absolute flex flex-col items-center">
+                    <span id="time-display" class="text-6xl sm:text-7xl font-black tracking-tighter text-white">01:00</span>
+                    <span id="reps-display" class="text-amber-400 text-sm font-bold mt-1 hidden">40 Wiederholungen</span>
+                </div>
+            </div>
+
+            <!-- Next Up Preview Banner -->
+            <div class="w-full bg-slate-900/80 border border-slate-800 rounded-xl p-3 text-left flex justify-between items-center">
+                <div>
+                    <span class="text-[10px] uppercase font-bold text-slate-500 block">Danach kommt</span>
+                    <span id="next-title" class="text-sm font-semibold text-slate-300 truncate max-w-[220px] block">Seitstütz rechts + Heben senken</span>
+                </div>
+                <span id="next-duration" class="text-xs font-mono text-slate-400 bg-slate-800 px-2 py-1 rounded">60s</span>
+            </div>
+
+            <!-- Workout Controls -->
+            <div class="flex items-center gap-4 w-full pt-2">
+                <button id="prev-btn" class="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold transition active:scale-95">
+                    <i class="fa-solid fa-backward"></i>
+                </button>
+                <button id="pause-btn" class="flex-2 py-4 px-8 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-2xl font-black text-xl shadow-lg transition active:scale-95 flex-grow">
+                    <i id="pause-icon" class="fa-solid fa-pause"></i>
+                </button>
+                <button id="next-btn" class="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold transition active:scale-95">
+                    <i class="fa-solid fa-forward"></i>
+                </button>
+            </div>
+
+            <button id="cancel-workout-btn" class="text-slate-500 hover:text-red-400 text-xs font-semibold uppercase tracking-wider pt-2">
+                Workout Abbrechen
+            </button>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="p-3 text-center text-xs text-slate-600 border-t border-slate-900">
+        Flexibler Intervall- & Athletik-Timer
+    </footer>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        // Preset Routines Data (Includes the exact routine from user's image with set multipliers)
+        const PRESETS = {
+            'preset-athletik': {
+                rounds: 1,
+                rest: 30,
+                exercises: [
+                    { name: 'Plank + Bein Seitlich ran', duration: 60, reps: '', sets: 2 },
+                    { name: 'Seitstütz rechts + Heben senken', duration: 60, reps: '', sets: 2 },
+                    { name: 'Seitstütz links + Heben senken', duration: 60, reps: '', sets: 2 },
+                    { name: 'Taschenmesser', duration: 0, reps: '40 Wdh', sets: 1 },
+                    { name: 'Sit Up normal', duration: 0, reps: '40 Wdh', sets: 1 },
+                    { name: 'Hüfteheben + Bein abwechselnd ausstrecken', duration: 45, reps: '', sets: 2 },
+                    { name: 'Liegestütz + Bein diagonal zum Ellenbogen', duration: 45, reps: '', sets: 2 },
+                    { name: 'Hüfte heben', duration: 45, reps: '', sets: 2 },
+                    { name: 'Russian Twist', duration: 0, reps: '40 Wdh', sets: 1 },
+                    { name: 'Beine abwechselnd senken / heben', duration: 60, reps: '', sets: 2 },
+                    { name: 'Sit up lang', duration: 0, reps: '40 Wdh', sets: 1 },
+                    { name: '4-Stand + Arm & Knie zusammenziehen (30s Wechsel)', duration: 60, reps: '', sets: 2 },
+                    { name: 'Bankstellung', duration: 45, reps: '', sets: 2 },
+                    { name: 'Plank + Füße heben', duration: 45, reps: '', sets: 2 }
+                ]
+            },
+            'preset-tabata': {
+                rounds: 1,
+                rest: 10,
+                exercises: [
+                    { name: 'High Knees / Sprints', duration: 20, reps: '', sets: 8 },
+                    { name: 'Liegestütze', duration: 20, reps: '', sets: 8 },
+                    { name: 'Squat Jumps', duration: 20, reps: '', sets: 8 },
+                    { name: 'Burpees', duration: 20, reps: '', sets: 8 }
+                ]
+            }
+        };
+
+        // App State
+        let currentWorkout = [];
+        let totalRounds = 1;
+        let defaultRestTime = 30;
+        
+        // Timer Running State
+        let queue = [];
+        let currentQueueIndex = 0;
+        let timerInterval = null;
+        let timeRemaining = 0;
+        let initialPhaseDuration = 0;
+        let isPaused = false;
+        let soundEnabled = true;
+
+        // Audio Context for Beeps
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        function playBeep(freq = 600, type = 'sine', duration = 0.15) {
+            if (!soundEnabled) return;
+            try {
+                initAudio();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (e) {
+                console.log("Audio play error", e);
+            }
+        }
+
+        // DOM Elements
+        const viewSetup = document.getElementById('view-setup');
+        const viewTimer = document.getElementById('view-timer');
+        const routineSelect = document.getElementById('routine-select');
+        const defaultRestInput = document.getElementById('default-rest');
+        const totalRoundsInput = document.getElementById('total-rounds');
+        const exerciseListEl = document.getElementById('exercise-list');
+        const addExerciseBtn = document.getElementById('add-exercise-btn');
+        const startWorkoutBtn = document.getElementById('start-workout-btn');
+        const exerciseCountEl = document.getElementById('exercise-count');
+
+        // Timer View Elements
+        const phaseBadge = document.getElementById('phase-badge');
+        const roundIndicator = document.getElementById('round-indicator');
+        const currentTitle = document.getElementById('current-title');
+        const currentSubtext = document.getElementById('current-subtext');
+        const timeDisplay = document.getElementById('time-display');
+        const repsDisplay = document.getElementById('reps-display');
+        const timerProgress = document.getElementById('timer-progress');
+        const nextTitle = document.getElementById('next-title');
+        const nextDuration = document.getElementById('next-duration');
+        const pauseBtn = document.getElementById('pause-btn');
+        const pauseIcon = document.getElementById('pause-icon');
+        const prevBtn = document.getElementById('prev-btn');
+        const nextBtn = document.getElementById('next-btn');
+        const cancelBtn = document.getElementById('cancel-workout-btn');
+        const toggleSoundBtn = document.getElementById('toggle-sound-btn');
+        const soundIcon = document.getElementById('sound-icon');
+        const soundText = document.getElementById('sound-text');
+
+        // Load Initial Preset
+        function loadPreset(key) {
+            if (PRESETS[key]) {
+                const data = PRESETS[key];
+                totalRoundsInput.value = data.rounds;
+                defaultRestInput.value = data.rest;
+                currentWorkout = JSON.parse(JSON.stringify(data.exercises));
+            } else {
+                currentWorkout = [
+                    { name: 'Plank', duration: 45, reps: '', sets: 2 },
+                    { name: 'Liegestütze', duration: 30, reps: '', sets: 1 }
+                ];
+            }
+            renderExerciseList();
+        }
+
+        // Render Setup UI List
+        function renderExerciseList() {
+            exerciseListEl.innerHTML = '';
+            currentWorkout.forEach((ex, idx) => {
+                const item = document.createElement('div');
+                item.className = 'bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col gap-2';
+                item.innerHTML = `
+                    <div class="flex items-center justify-between gap-2">
+                        <input type="text" data-idx="${idx}" data-field="name" value="${ex.name}" placeholder="Übungsname" 
+                            class="ex-input font-medium bg-transparent text-slate-100 text-sm focus:outline-none focus:border-b border-indigo-500 flex-1">
+                        <button class="delete-ex-btn text-slate-600 hover:text-red-400 p-1 rounded transition" data-idx="${idx}">
+                            <i class="fa-solid fa-trash-can text-sm"></i>
+                        </button>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2 text-xs">
+                        <!-- Duration -->
+                        <div class="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1">
+                            <i class="fa-regular fa-clock text-slate-400"></i>
+                            <input type="number" data-idx="${idx}" data-field="duration" value="${ex.duration}" min="0" step="5" 
+                                class="ex-input w-10 bg-transparent text-right text-emerald-400 font-bold focus:outline-none">
+                            <span class="text-[10px] text-slate-500">s</span>
+                        </div>
+                        <!-- Reps -->
+                        <div class="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1">
+                            <input type="text" data-idx="${idx}" data-field="reps" value="${ex.reps || ''}" placeholder="z.B. 40x" 
+                                class="ex-input w-16 bg-transparent text-center text-amber-400 font-bold focus:outline-none">
+                        </div>
+                        <!-- Sets / Multiplier -->
+                        <div class="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1">
+                            <span class="text-[10px] text-slate-400">Sätze:</span>
+                            <input type="number" data-idx="${idx}" data-field="sets" value="${ex.sets || 1}" min="1" max="10" 
+                                class="ex-input w-8 bg-transparent text-center text-indigo-400 font-bold focus:outline-none">
+                            <span class="text-[10px] text-slate-400">x</span>
+                        </div>
+                    </div>
+                `;
+                exerciseListEl.appendChild(item);
+            });
+
+            exerciseCountEl.textContent = `${currentWorkout.length} Übungen`;
+
+            // Add Event Listeners to Inputs
+            document.querySelectorAll('.ex-input').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    const idx = parseInt(e.target.dataset.idx);
+                    const field = e.target.dataset.field;
+                    let val = e.target.value;
+                    if (field === 'duration' || field === 'sets') val = parseInt(val) || 0;
+                    currentWorkout[idx][field] = val;
+                });
+            });
+
+            document.querySelectorAll('.delete-ex-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const idx = parseInt(e.currentTarget.dataset.idx);
+                    currentWorkout.splice(idx, 1);
+                    renderExerciseList();
+                });
+            });
+        }
+
+        // Add Exercise
+        addExerciseBtn.addEventListener('click', () => {
+            currentWorkout.push({ name: 'Neue Übung', duration: 45, reps: '', sets: 1 });
+            renderExerciseList();
+        });
+
+        routineSelect.addEventListener('change', (e) => {
+            loadPreset(e.target.value);
+        });
+
+        // Toggle Sound
+        toggleSoundBtn.addEventListener('click', () => {
+            soundEnabled = !soundEnabled;
+            if (soundEnabled) {
+                soundIcon.className = 'fa-solid fa-volume-high text-emerald-400';
+                soundText.textContent = 'Ton An';
+                playBeep(800, 'sine', 0.1);
+            } else {
+                soundIcon.className = 'fa-solid fa-volume-xmark text-slate-500';
+                soundText.textContent = 'Ton Aus';
+            }
+        });
+
+        // START WORKOUT PIPELINE
+        startWorkoutBtn.addEventListener('click', () => {
+            initAudio();
+            totalRounds = parseInt(totalRoundsInput.value) || 1;
+            defaultRestTime = parseInt(defaultRestInput.value) || 0;
+
+            if (currentWorkout.length === 0) {
+                alert('Bitte füge mindestens eine Übung hinzu.');
+                return;
+            }
+
+            // Build Queue with direct sets repetition
+            queue = [];
+            for (let r = 1; r <= totalRounds; r++) {
+                currentWorkout.forEach((ex, idx) => {
+                    const setsCount = ex.sets || 1;
+                    
+                    for (let s = 1; s <= setsCount; s++) {
+                        // Work Phase
+                        queue.push({
+                            type: 'work',
+                            name: ex.name,
+                            duration: ex.duration,
+                            reps: ex.reps,
+                            round: r,
+                            totalRounds: totalRounds,
+                            set: s,
+                            totalSets: setsCount,
+                            exIndex: idx + 1,
+                            totalEx: currentWorkout.length
+                        });
+
+                        // Determine next exercise/set for preview during rest
+                        let nextName = '';
+                        if (s < setsCount) {
+                            nextName = `${ex.name} (Satz ${s + 1}/${setsCount})`;
+                        } else if (idx < currentWorkout.length - 1) {
+                            const nextEx = currentWorkout[idx + 1];
+                            nextName = nextEx.sets > 1 ? `${nextEx.name} (1/${nextEx.sets})` : nextEx.name;
+                        } else if (r < totalRounds) {
+                            const firstEx = currentWorkout[0];
+                            nextName = `Runde ${r+1}: ${firstEx.name}`;
+                        }
+
+                        // Check if this is the very last phase of entire workout
+                        const isLastPhaseOfWorkout = (r === totalRounds && idx === currentWorkout.length - 1 && s === setsCount);
+
+                        // Pause Phase
+                        if (defaultRestTime > 0 && !isLastPhaseOfWorkout) {
+                            queue.push({
+                                type: 'rest',
+                                name: 'Pause',
+                                duration: defaultRestTime,
+                                reps: '',
+                                nextName: nextName,
+                                round: r,
+                                totalRounds: totalRounds
+                            });
+                        }
+                    }
+                });
+            }
+
+            currentQueueIndex = 0;
+            viewSetup.classList.add('hidden');
+            viewTimer.classList.remove('hidden');
+            startPhase();
+        });
+
+        // Start Phase
+        function startPhase() {
+            clearInterval(timerInterval);
+            isPaused = false;
+            updatePauseButtonUI();
+
+            const current = queue[currentQueueIndex];
+            const next = queue[currentQueueIndex + 1];
+
+            // Set UI for phase
+            roundIndicator.textContent = current.totalRounds > 1 ? `Zirkel-Runde ${current.round} von ${current.totalRounds}` : 'Workout Aktiv';
+            currentTitle.textContent = current.name;
+
+            if (current.type === 'work') {
+                const setLabel = current.totalSets > 1 ? ` (Satz ${current.set}/${current.totalSets})` : '';
+                phaseBadge.textContent = `Übung ${current.exIndex}/${current.totalEx}${setLabel}`;
+                phaseBadge.className = 'px-4 py-1.5 rounded-full text-xs font-extrabold uppercase tracking-widest bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+                timerProgress.classList.replace('stroke-amber-500', 'stroke-emerald-500');
+                
+                if (current.reps) {
+                    repsDisplay.textContent = current.reps;
+                    repsDisplay.classList.remove('hidden');
+                } else {
+                    repsDisplay.classList.add('hidden');
+                }
+                currentSubtext.textContent = current.duration > 0 ? '' : 'Führe die Wiederholungen aus';
+            } else {
+                phaseBadge.textContent = 'Erholung / Pause';
+                phaseBadge.className = 'px-4 py-1.5 rounded-full text-xs font-extrabold uppercase tracking-widest bg-amber-500/20 text-amber-400 border border-amber-500/30';
+                timerProgress.classList.replace('stroke-emerald-500', 'stroke-amber-500');
+                repsDisplay.classList.add('hidden');
+                currentSubtext.textContent = `Als nächstes: ${current.nextName}`;
+            }
+
+            // Next Up Card
+            if (next) {
+                const nextSetLabel = (next.type === 'work' && next.totalSets > 1) ? ` (Satz ${next.set}/${next.totalSets})` : '';
+                nextTitle.textContent = next.type === 'rest' ? 'Pause' : `${next.name}${nextSetLabel}`;
+                nextDuration.textContent = next.duration > 0 ? `${next.duration}s` : (next.reps || 'Wdh');
+            } else {
+                nextTitle.textContent = 'Workout Ende!';
+                nextDuration.textContent = '-';
+            }
+
+            timeRemaining = current.duration;
+            initialPhaseDuration = current.duration;
+
+            // Handle non-timed exercises (reps only)
+            if (timeRemaining <= 0) {
+                timeDisplay.textContent = "GO!";
+                updateProgressRing(1);
+                return;
+            }
+
+            updateTimeDisplay();
+            updateProgressRing(1);
+
+            // High Frequency Beep at Phase Start
+            playBeep(880, 'triangle', 0.25);
+
+            // Timer Loop
+            timerInterval = setInterval(() => {
+                if (!isPaused) {
+                    timeRemaining--;
+                    updateTimeDisplay();
+                    updateProgressRing(timeRemaining / initialPhaseDuration);
+
+                    // Countdown Beeps (3, 2, 1)
+                    if (timeRemaining <= 3 && timeRemaining > 0) {
+                        playBeep(440, 'sine', 0.12);
+                    }
+
+                    if (timeRemaining <= 0) {
+                        clearInterval(timerInterval);
+                        nextPhase();
+                    }
+                }
+            }, 1000);
+        }
+
+        function nextPhase() {
+            if (currentQueueIndex < queue.length - 1) {
+                currentQueueIndex++;
+                startPhase();
+            } else {
+                // Workout Complete
+                playBeep(523.25, 'sine', 0.2);
+                setTimeout(() => playBeep(659.25, 'sine', 0.2), 150);
+                setTimeout(() => playBeep(783.99, 'sine', 0.4), 300);
+                
+                alert('Herzlichen Glückwunsch! Workout erfolgreich beendet!');
+                exitTimer();
+            }
+        }
+
+        function prevPhase() {
+            if (currentQueueIndex > 0) {
+                currentQueueIndex--;
+                startPhase();
+            }
+        }
+
+        function updateTimeDisplay() {
+            const mins = Math.floor(timeRemaining / 60);
+            const secs = timeRemaining % 60;
+            timeDisplay.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function updateProgressRing(fraction) {
+            const circumference = 2 * Math.PI * 110; 
+            const offset = circumference - (fraction * circumference);
+            timerProgress.style.strokeDasharray = `${circumference}`;
+            timerProgress.style.strokeDashoffset = offset;
+        }
+
+        function updatePauseButtonUI() {
+            if (isPaused) {
+                pauseIcon.className = 'fa-solid fa-play';
+                pauseBtn.classList.replace('bg-amber-500', 'bg-emerald-500');
+                pauseBtn.classList.replace('hover:bg-amber-400', 'hover:bg-emerald-400');
+            } else {
+                pauseIcon.className = 'fa-solid fa-pause';
+                pauseBtn.classList.replace('bg-emerald-500', 'bg-amber-500');
+                pauseBtn.classList.replace('hover:bg-emerald-400', 'hover:bg-amber-400');
+            }
+        }
+
+        pauseBtn.addEventListener('click', () => {
+            isPaused = !isPaused;
+            updatePauseButtonUI();
+        });
+
+        nextBtn.addEventListener('click', () => {
+            clearInterval(timerInterval);
+            nextPhase();
+        });
+
+        prevBtn.addEventListener('click', () => {
+            clearInterval(timerInterval);
+            prevPhase();
+        });
+
+        function exitTimer() {
+            clearInterval(timerInterval);
+            viewTimer.classList.add('hidden');
+            viewSetup.classList.remove('hidden');
+        }
+
+        cancelBtn.addEventListener('click', () => {
+            if (confirm('Möchtest du das Workout wirklich abbrechen?')) {
+                exitTimer();
+            }
+        });
+
+        // Initialize with Athletik Kreis Preset
+        loadPreset('preset-athletik');
+    </script>
+</body>
+</html>
+```
