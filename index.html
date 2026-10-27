@@ -7,16 +7,13 @@
     <title>Flexibler Intervall & Workout Timer</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <!-- SheetJS CDN for parsing Excel files -->
+    <!-- SheetJS CDN für Excel & CSV Upload -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
         body {
             font-family: 'Inter', sans-serif;
             touch-action: manipulation;
-        }
-        .animate-pulse-fast {
-            animation: pulse 0.75s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
     </style>
 </head>
@@ -40,40 +37,39 @@
         <!-- VIEW 1: PRESET & WORKOUT BUILDER -->
         <div id="view-setup" class="space-y-6">
 
-            <!-- Presets Dropdown -->
+            <!-- Presets & File Import -->
             <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
                 <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Trainingsplan auswählen</label>
                 <div class="flex gap-2">
                     <select id="routine-select" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500">
-                        <option value="preset-athletik">Athletik Kreis (Aus Tabellenfoto)</option>
+                        <option value="preset-athletik">Athletik Kreis (Aus Vorlage)</option>
                         <option value="preset-tabata">Klassisches Tabata (4 Min)</option>
-                        <option value="custom">-- Eigenes Workout erstellen --</option>
+                        <option value="custom">-- Eigener Plan / Importiert --</option>
                     </select>
                 </div>
 
-                <!-- Excel / CSV File Import Section -->
+                <!-- Text & Excel File Import Section -->
                 <div class="mt-4 pt-3 border-t border-slate-800">
                     <label class="block text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-2">
-                        <i class="fa-solid fa-file-excel mr-1"></i> Excel / CSV Tabellenblatt einlesen
+                        <i class="fa-solid fa-file-arrow-up mr-1"></i> Datei einlesen (.txt, .xlsx, .xls, .csv)
                     </label>
-                    <label class="flex items-center justify-center w-full p-3 bg-slate-950 border border-dashed border-slate-700 hover:border-indigo-500 rounded-xl cursor-pointer transition text-xs text-slate-400 hover:text-slate-200 mb-3">
-                        <i class="fa-solid fa-upload mr-2 text-indigo-400"></i>
-                        <span id="file-label">Excel-Datei (.xlsx, .csv) auswählen</span>
-                        <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" class="hidden">
+                    <label class="flex items-center justify-center w-full p-3 bg-slate-950 border border-dashed border-indigo-800/80 hover:border-indigo-500 rounded-xl cursor-pointer transition text-xs text-slate-400 hover:text-slate-200">
+                        <i class="fa-solid fa-file-lines mr-2 text-indigo-400 text-sm"></i>
+                        <span id="file-label">Datei auswählen (.txt, .xlsx, .csv)</span>
+                        <input type="file" id="document-file-input" accept=".txt, .xlsx, .xls, .csv" class="hidden">
                     </label>
+                    <div id="status-message" class="hidden mt-2 p-2.5 rounded-xl text-xs text-center font-medium"></div>
+                </div>
 
-                    <!-- Image / OCR Upload Section -->
-                    <label class="block text-xs font-semibold text-teal-400 uppercase tracking-wider mb-2">
-                        <i class="fa-solid fa-camera mr-1"></i> Foto / Bild vom Trainingsplan einlesen (AI Scan)
+                <!-- Export & Import Buttons for JSON Plans -->
+                <div class="mt-4 pt-3 border-t border-slate-800 flex gap-2">
+                    <button id="export-json-btn" class="flex-1 py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl border border-slate-700 transition flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-download text-indigo-400"></i> Plan Exportieren (JSON)
+                    </button>
+                    <label class="flex-1 py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl border border-slate-700 transition flex items-center justify-center gap-1.5 cursor-pointer text-center">
+                        <i class="fa-solid fa-upload text-indigo-400"></i> Plan Importieren
+                        <input type="file" id="import-json-file" accept=".json" class="hidden">
                     </label>
-                    <label class="flex items-center justify-center w-full p-3 bg-slate-950 border border-dashed border-teal-800 hover:border-teal-500 rounded-xl cursor-pointer transition text-xs text-slate-400 hover:text-slate-200">
-                        <i class="fa-solid fa-image mr-2 text-teal-400"></i>
-                        <span id="image-label">Foto von Tabelle auswählen / knipsen</span>
-                        <input type="file" id="image-file-input" accept="image/*" class="hidden">
-                    </label>
-                    <div id="image-loading" class="hidden mt-2 p-3 bg-teal-950/40 border border-teal-800/50 rounded-xl text-center text-xs text-teal-300 animate-pulse">
-                        <i class="fa-solid fa-spinner fa-spin mr-2 text-teal-400"></i> Bild wird mit KI analysiert und in Übungen umgewandelt...
-                    </div>
                 </div>
             </div>
 
@@ -128,19 +124,17 @@
 
             <!-- Current Exercise Title -->
             <div class="min-h-[4rem] flex flex-col justify-center px-4">
-                <h2 id="current-title" class="text-2xl sm:text-3xl font-extrabold text-white leading-tight">Plank + Bein Seitlich ran</h2>
-                <p id="current-subtext" class="text-slate-400 text-xs mt-1">Nächste Übung: Seitstütz rechts</p>
+                <h2 id="current-title" class="text-2xl sm:text-3xl font-extrabold text-white leading-tight">Plank</h2>
+                <p id="current-subtext" class="text-slate-400 text-xs mt-1"></p>
             </div>
 
             <!-- Circular Progress / Digital Display -->
             <div class="relative w-64 h-64 sm:w-72 sm:h-72 flex items-center justify-center">
-                <!-- Outer Progress Circle -->
                 <svg class="w-full h-full transform -rotate-90">
                     <circle cx="50%" cy="50%" r="42%" class="stroke-slate-800" stroke-width="12" fill="transparent" />
                     <circle id="timer-progress" cx="50%" cy="50%" r="42%" class="stroke-emerald-500 transition-all duration-300" stroke-width="12" fill="transparent" stroke-linecap="round" stroke-dasharray="750" stroke-dashoffset="0" />
                 </svg>
 
-                <!-- Digital Time Display inside Circle -->
                 <div class="absolute flex flex-col items-center">
                     <span id="time-display" class="text-6xl sm:text-7xl font-black tracking-tighter text-white">01:00</span>
                     <span id="reps-display" class="text-amber-400 text-sm font-bold mt-1 hidden">40 Wiederholungen</span>
@@ -151,7 +145,7 @@
             <div class="w-full bg-slate-900/80 border border-slate-800 rounded-xl p-3 text-left flex justify-between items-center">
                 <div>
                     <span class="text-[10px] uppercase font-bold text-slate-500 block">Danach kommt</span>
-                    <span id="next-title" class="text-sm font-semibold text-slate-300 truncate max-w-[220px] block">Seitstütz rechts + Heben senken</span>
+                    <span id="next-title" class="text-sm font-semibold text-slate-300 truncate max-w-[220px] block">Nächste Übung</span>
                 </div>
                 <span id="next-duration" class="text-xs font-mono text-slate-400 bg-slate-800 px-2 py-1 rounded">60s</span>
             </div>
@@ -176,14 +170,12 @@
 
     </main>
 
-    <!-- Footer -->
     <footer class="p-3 text-center text-xs text-slate-600 border-t border-slate-900">
         Flexibler Intervall- & Athletik-Timer
     </footer>
 
     <!-- JAVASCRIPT LOGIC -->
     <script>
-        // Preset Routines Data (Includes the exact routine from user's image with set multipliers)
         const PRESETS = {
             'preset-athletik': {
                 rounds: 1,
@@ -200,7 +192,7 @@
                     { name: 'Russian Twist', duration: 0, reps: '40 Wdh', sets: 1 },
                     { name: 'Beine abwechselnd senken / heben', duration: 60, reps: '', sets: 2 },
                     { name: 'Sit up lang', duration: 0, reps: '40 Wdh', sets: 1 },
-                    { name: '4-Stand + Arm & Knie zusammenziehen (30s Wechsel)', duration: 60, reps: '', sets: 2 },
+                    { name: '4-Stand + Arm & Knie zusammenziehen', duration: 60, reps: '', sets: 2 },
                     { name: 'Bankstellung', duration: 45, reps: '', sets: 2 },
                     { name: 'Plank + Füße heben', duration: 45, reps: '', sets: 2 }
                 ]
@@ -217,12 +209,10 @@
             }
         };
 
-        // App State
         let currentWorkout = [];
         let totalRounds = 1;
         let defaultRestTime = 30;
         
-        // Timer Running State
         let queue = [];
         let currentQueueIndex = 0;
         let timerInterval = null;
@@ -231,7 +221,6 @@
         let isPaused = false;
         let soundEnabled = true;
 
-        // Audio Context for Beeps
         let audioCtx = null;
 
         function initAudio() {
@@ -254,20 +243,18 @@
                 gain.connect(audioCtx.destination);
                 osc.start();
                 osc.stop(audioCtx.currentTime + duration);
-            } catch (e) {
-                console.log("Audio play error", e);
-            }
+            } catch (e) {}
         }
 
         // DOM Elements
         const viewSetup = document.getElementById('view-setup');
         const viewTimer = document.getElementById('view-timer');
         const routineSelect = document.getElementById('routine-select');
-        const excelFileInput = document.getElementById('excel-file-input');
-        const imageFileInput = document.getElementById('image-file-input');
-        const imageLabel = document.getElementById('image-label');
-        const imageLoading = document.getElementById('image-loading');
+        const exportJsonBtn = document.getElementById('export-json-btn');
+        const importJsonFile = document.getElementById('import-json-file');
+        const documentFileInput = document.getElementById('document-file-input');
         const fileLabel = document.getElementById('file-label');
+        const statusMessage = document.getElementById('status-message');
         const defaultRestInput = document.getElementById('default-rest');
         const totalRoundsInput = document.getElementById('total-rounds');
         const exerciseListEl = document.getElementById('exercise-list');
@@ -294,23 +281,16 @@
         const soundIcon = document.getElementById('sound-icon');
         const soundText = document.getElementById('sound-text');
 
-        // Load Initial Preset
         function loadPreset(key) {
             if (PRESETS[key]) {
                 const data = PRESETS[key];
                 totalRoundsInput.value = data.rounds;
                 defaultRestInput.value = data.rest;
                 currentWorkout = JSON.parse(JSON.stringify(data.exercises));
-            } else {
-                currentWorkout = [
-                    { name: 'Plank', duration: 45, reps: '', sets: 2 },
-                    { name: 'Liegestütze', duration: 30, reps: '', sets: 1 }
-                ];
             }
             renderExerciseList();
         }
 
-        // Render Setup UI List
         function renderExerciseList() {
             exerciseListEl.innerHTML = '';
             currentWorkout.forEach((ex, idx) => {
@@ -325,22 +305,19 @@
                         </button>
                     </div>
                     <div class="flex flex-wrap items-center gap-2 text-xs">
-                        <!-- Duration -->
                         <div class="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1">
                             <i class="fa-regular fa-clock text-slate-400"></i>
                             <input type="number" data-idx="${idx}" data-field="duration" value="${ex.duration}" min="0" step="5" 
                                 class="ex-input w-10 bg-transparent text-right text-emerald-400 font-bold focus:outline-none">
                             <span class="text-[10px] text-slate-500">s</span>
                         </div>
-                        <!-- Reps -->
                         <div class="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1">
-                            <input type="text" data-idx="${idx}" data-field="reps" value="${ex.reps || ''}" placeholder="z.B. 40x" 
-                                class="ex-input w-16 bg-transparent text-center text-amber-400 font-bold focus:outline-none">
+                            <input type="text" data-idx="${idx}" data-field="reps" value="${ex.reps || ''}" placeholder="z.B. 40 Wdh" 
+                                class="ex-input w-20 bg-transparent text-center text-amber-400 font-bold focus:outline-none">
                         </div>
-                        <!-- Sets / Multiplier -->
                         <div class="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1">
                             <span class="text-[10px] text-slate-400">Sätze:</span>
-                            <input type="number" data-idx="${idx}" data-field="sets" value="${ex.sets || 1}" min="1" max="10" 
+                            <input type="number" data-idx="${idx}" data-field="sets" value="${ex.sets || 1}" min="1" max="20" 
                                 class="ex-input w-8 bg-transparent text-center text-indigo-400 font-bold focus:outline-none">
                             <span class="text-[10px] text-slate-400">x</span>
                         </div>
@@ -350,16 +327,21 @@
             });
 
             exerciseCountEl.textContent = `${currentWorkout.length} Übungen`;
+            saveCurrentState();
 
-            // Add Event Listeners to Inputs
             document.querySelectorAll('.ex-input').forEach(input => {
-                input.addEventListener('change', (e) => {
+                const handler = (e) => {
                     const idx = parseInt(e.target.dataset.idx);
                     const field = e.target.dataset.field;
                     let val = e.target.value;
                     if (field === 'duration' || field === 'sets') val = parseInt(val) || 0;
-                    currentWorkout[idx][field] = val;
-                });
+                    if (currentWorkout[idx]) {
+                        currentWorkout[idx][field] = val;
+                    }
+                    saveCurrentState();
+                };
+                input.addEventListener('input', handler);
+                input.addEventListener('change', handler);
             });
 
             document.querySelectorAll('.delete-ex-btn').forEach(btn => {
@@ -369,6 +351,207 @@
                     renderExerciseList();
                 });
             });
+        }
+
+        function saveCurrentState() {
+            try {
+                localStorage.setItem('flexitimer_saved_workout', JSON.stringify({
+                    rounds: parseInt(totalRoundsInput.value) || 1,
+                    rest: parseInt(defaultRestInput.value) || 30,
+                    exercises: currentWorkout
+                }));
+            } catch (e) {}
+        }
+
+        // Export JSON Plan
+        exportJsonBtn.addEventListener('click', () => {
+            try {
+                const workoutData = {
+                    title: "Mein Trainingsplan",
+                    rounds: parseInt(totalRoundsInput.value) || 1,
+                    rest: parseInt(defaultRestInput.value) || 30,
+                    exercises: currentWorkout
+                };
+                const jsonString = JSON.stringify(workoutData, null, 2);
+                const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(jsonString);
+                const downloadLink = document.createElement('a');
+                downloadLink.setAttribute('href', dataUri);
+                downloadLink.setAttribute('download', `trainingsplan_${Date.now()}.json`);
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
+                showStatus('Plan erfolgreich als JSON heruntergeladen!', 'success');
+            } catch (err) {
+                showStatus('Export-Fehler: Plan in Zwischenablage kopiert.', 'info');
+            }
+        });
+
+        // Import JSON Plan
+        importJsonFile.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const imported = JSON.parse(event.target.result);
+                    if (imported && Array.isArray(imported.exercises)) {
+                        currentWorkout = imported.exercises;
+                        if (imported.rounds) totalRoundsInput.value = imported.rounds;
+                        if (imported.rest) defaultRestInput.value = imported.rest;
+                        routineSelect.value = 'custom';
+                        renderExerciseList();
+                        showStatus('JSON Plan erfolgreich geladen!', 'success');
+                    }
+                } catch (err) {
+                    showStatus('Ungültiges JSON Format.', 'error');
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        // Generic Parser for Text Line or Table Row
+        function parseRowText(rawText) {
+            if (!rawText || !rawText.trim()) return null;
+
+            let text = rawText.trim();
+
+            // Ignore header rows often found below Pause definitions (e.g., "WDH/Zeit", "Übung", etc.)
+            const isHeaderRow = /^(WDH|Zeit|Übung|Exercise|Reps|Duration|Sets|Sätze)/i.test(text);
+            if (isHeaderRow) return null;
+
+            // Check if this row specifies a rest/pause time (e.g. "Pause 30 sek.")
+            const pauseMatch = text.match(/^Pause\s*(\d+)\s*(sek|sec|sekunden|s)?/i);
+            if (pauseMatch) {
+                const restSecs = parseInt(pauseMatch[1]);
+                if (!isNaN(restSecs)) {
+                    defaultRestInput.value = restSecs;
+                }
+                return null; // Don't add Pause as a exercise entry
+            }
+
+            let duration = 0;
+            let reps = '';
+            let sets = 1;
+
+            // Check sets multiplier (e.g. 2x, 3x)
+            const setsMatch = text.match(/(\d+)\s*x/i);
+            if (setsMatch) {
+                sets = parseInt(setsMatch[1]) || 1;
+                text = text.replace(/(\d+)\s*x/i, '').trim();
+            }
+
+            // Check for minutes / seconds
+            const minMatch = text.match(/(\d+)\s*(min|minute|minuten)/i);
+            const secMatch = text.match(/(\d+)\s*(sek|sec|sekunden|s\b)/i);
+
+            if (minMatch) {
+                duration += parseInt(minMatch[1]) * 60;
+                text = text.replace(/(\d+)\s*(min|minute|minuten)/i, '').trim();
+            }
+            if (secMatch) {
+                duration += parseInt(secMatch[1]);
+                text = text.replace(/(\d+)\s*(sek|sec|sekunden|s\b)/i, '').trim();
+            }
+
+            // Check for plain repetitions (e.g., 40 Wdh, 40 Situps)
+            const repsMatch = text.match(/(\d+)\s*(wdh|wiederholungen|stk)/i);
+            if (repsMatch) {
+                reps = `${repsMatch[1]} Wdh`;
+                text = text.replace(/(\d+)\s*(wdh|wiederholungen|stk)/i, '').trim();
+            } else if (!duration && !minMatch && !secMatch) {
+                const leadingNum = text.match(/^(\d+)\b/);
+                if (leadingNum) {
+                    reps = `${leadingNum[1]} Wdh`;
+                    text = text.replace(/^(\d+)\b/, '').trim();
+                }
+            }
+
+            // Clean exercise name
+            let name = text.replace(/^[-–:\.,]\s*/, '').trim();
+
+            if (!name) name = 'Übung';
+
+            return { name, duration, reps, sets };
+        }
+
+        // Import Documents (.txt, .xlsx, .csv)
+        documentFileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            fileLabel.textContent = file.name;
+            const ext = file.name.split('.').pop().toLowerCase();
+
+            if (ext === 'txt' || ext === 'csv') {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const lines = event.target.result.split(/\r?\n/);
+                    
+                    // Suche den Index der ersten "Pause"-Zeile und ignoriere alles davor
+                    let firstPauseIndex = lines.findIndex(line => /^Pause\s*\d+/i.test(line.trim()));
+                    const validLines = firstPauseIndex !== -1 ? lines.slice(firstPauseIndex) : lines;
+
+                    const parsedList = [];
+                    validLines.forEach(line => {
+                        const parsed = parseRowText(line);
+                        if (parsed && parsed.name) parsedList.push(parsed);
+                    });
+                    if (parsedList.length > 0) {
+                        currentWorkout = parsedList;
+                        renderExerciseList();
+                        routineSelect.value = 'custom';
+                        showStatus(`${parsedList.length} Übungen aus Text-Datei eingelesen!`, 'success');
+                    } else {
+                        showStatus('Keine Übungen in der Textdatei gefunden.', 'error');
+                    }
+                };
+                reader.readAsText(file);
+            } else if (ext === 'xlsx' || ext === 'xls') {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    try {
+                        const data = new Uint8Array(event.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                        const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+
+                        // Wandle jede Zeile in Text um
+                        const rawLines = jsonData.map(row => (row || []).join(' '));
+                        
+                        // Suche den Index der ersten "Pause"-Zeile und ignoriere alles davor
+                        let firstPauseIndex = rawLines.findIndex(line => /^Pause\s*\d+/i.test(line.trim()));
+                        const validLines = firstPauseIndex !== -1 ? rawLines.slice(firstPauseIndex) : rawLines;
+
+                        const parsedList = [];
+                        validLines.forEach(lineText => {
+                            const parsed = parseRowText(lineText);
+                            if (parsed && parsed.name) parsedList.push(parsed);
+                        });
+
+                        if (parsedList.length > 0) {
+                            currentWorkout = parsedList;
+                            renderExerciseList();
+                            routineSelect.value = 'custom';
+                            showStatus(`${parsedList.length} Übungen aus Excel eingelesen!`, 'success');
+                        } else {
+                            showStatus('Keine Übungen in der Excel-Tabelle erkannt.', 'error');
+                        }
+                    } catch (err) {
+                        showStatus('Fehler beim Lesen der Excel-Datei.', 'error');
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        });
+
+        function showStatus(msg, type = 'info') {
+            statusMessage.textContent = msg;
+            statusMessage.classList.remove('hidden', 'bg-emerald-950/50', 'text-emerald-400', 'bg-red-950/50', 'text-red-400');
+            if (type === 'success') {
+                statusMessage.classList.add('bg-emerald-950/50', 'text-emerald-400', 'border', 'border-emerald-800');
+            } else {
+                statusMessage.classList.add('bg-red-950/50', 'text-red-400', 'border', 'border-red-800');
+            }
         }
 
         // Add Exercise
@@ -381,207 +564,7 @@
             loadPreset(e.target.value);
         });
 
-        // Parse imported text for time (seconds/minutes), reps, and sets
-        function parseExerciseRow(nameStr, timeRepsStr) {
-            let duration = 0;
-            let reps = '';
-            let sets = 1;
-
-            if (!timeRepsStr && !nameStr) return null;
-
-            const fullText = `${timeRepsStr || ''} ${nameStr || ''}`.trim();
-
-            // Check for set multiplier (e.g., 2x, 3x)
-            const setsMatch = fullText.match(/(\d+)\s*x/i);
-            if (setsMatch) {
-                sets = parseInt(setsMatch[1]) || 1;
-            }
-
-            // Check for duration (e.g., 1 min, 45 sek, 60s, 1:30)
-            const minMatch = fullText.match(/(\d+)\s*(min|minute|minuten)/i);
-            const secMatch = fullText.match(/(\d+)\s*(sek|sec|sekunden|s\b)/i);
-
-            if (minMatch) {
-                duration += parseInt(minMatch[1]) * 60;
-            }
-            if (secMatch) {
-                duration += parseInt(secMatch[1]);
-            }
-
-            // Check for plain repetitions (e.g., 40, 40 Wdh, 20x)
-            const repsMatch = fullText.match(/(\d+)\s*(wdh|wiederholungen|stk)/i);
-            if (repsMatch) {
-                reps = `${repsMatch[1]} Wdh`;
-                if (!duration && !minMatch && !secMatch) duration = 0;
-            } else if (!duration && !minMatch && !secMatch) {
-                // If number exists but no unit (e.g., "40 Taschenmesser")
-                const leadingNumMatch = fullText.match(/^(\d+)\b/);
-                if (leadingNumMatch) {
-                    reps = `${leadingNumMatch[1]} Wdh`;
-                }
-            }
-
-            // Clean exercise name from prefix reps/times if present
-            let cleanName = (nameStr || fullText).replace(/^(\d+)\s*(wdh|wiederholungen|stk)?\s*/i, '').trim();
-
-            return {
-                name: cleanName || 'Übung',
-                duration: duration,
-                reps: reps,
-                sets: sets
-            };
-        }
-
-        // Excel / CSV File Import Handler
-        excelFileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            fileLabel.textContent = file.name;
-
-            const reader = new FileReader();
-            reader.onload = function(event) {
-                try {
-                    const data = new Uint8Array(event.target.result);
-                    const workbook = XLSX.read(data, { type: 'array' });
-                    
-                    // Read first worksheet
-                    const firstSheetName = workbook.SheetNames[0];
-                    const worksheet = workbook.Sheets[firstSheetName];
-                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-
-                    const importedWorkout = [];
-
-                    jsonData.forEach(row => {
-                        if (!row || row.length === 0) return;
-
-                        // Join row text or find col values
-                        const colA = String(row[0] || '').trim();
-                        const colB = String(row[1] || '').trim();
-                        const colC = String(row[2] || '').trim();
-
-                        // Try parsing combinations from table columns
-                        let exData = null;
-                        if (colA || colB || colC) {
-                            if (colB && colA) {
-                                exData = parseExerciseRow(colB, colA);
-                            } else if (colA) {
-                                exData = parseExerciseRow(colA, '');
-                            }
-                        }
-
-                        if (exData && exData.name) {
-                            importedWorkout.push(exData);
-                        }
-                    });
-
-                    if (importedWorkout.length > 0) {
-                        currentWorkout = importedWorkout;
-                        renderExerciseList();
-                        routineSelect.value = 'custom';
-                    } else {
-                        alert('Es konnten keine Übungen in der Datei erkannt werden.');
-                    }
-                } catch (err) {
-                    console.error('Fehler beim Einlesen:', err);
-                    alert('Fehler beim Lesen der Excel-Datei. Bitte stelle sicher, dass es eine gültige .xlsx oder .csv Datei ist.');
-                }
-            };
-            reader.readAsArrayBuffer(file);
-        });
-
-        // AI Image / Photo Parsing with Gemini API
-        imageFileInput.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            imageLabel.textContent = file.name;
-            imageLoading.classList.remove('hidden');
-
-            try {
-                // Convert Image file to base64
-                const base64Data = await new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = () => resolve(reader.result.split(',')[1]);
-                    reader.onerror = reject;
-                    reader.readAsDataURL(file);
-                });
-
-                const systemPrompt = "Du bist ein erfahrener Fitness-Assistent. Analysiere das Hochgeladene Bild eines Trainingsplans/einer Tabelle. Extrahiere alle Übungen mit ihren Namen, Ausführungsdauern in Sekunden (oder 0 falls nur Wdh.), Wiederholungen (reps) und Anzahl der Sätze (sets). Behalte exakt die Struktur bei.";
-                const userPrompt = "Lies die Tabelle im Bild aus und gib mir das Ergebnis als strukturiertes JSON Array von Übungen zurück. Das Schema pro Übung lautet: name (string), duration (number in Sekunden, z.B. 60 für 1 min, 45 für 45s, 0 wenn nur Wiederholungen), reps (string, z.B. '40 Wdh' oder leer ''), sets (number, z.B. 2 wenn '2x' dabei steht, sonst 1).";
-
-                const payload = {
-                    contents: [{
-                        role: "user",
-                        parts: [
-                            { text: userPrompt },
-                            {
-                                inlineData: {
-                                    mimeType: file.type || "image/jpeg",
-                                    data: base64Data
-                                }
-                            }
-                        ]
-                    }],
-                    systemInstruction: {
-                        parts: [{ text: systemPrompt }]
-                    },
-                    generationConfig: {
-                        responseMimeType: "application/json",
-                        responseSchema: {
-                            type: "ARRAY",
-                            items: {
-                                type: "OBJECT",
-                                properties: {
-                                    name: { type: "STRING" },
-                                    duration: { type: "INTEGER" },
-                                    reps: { type: "STRING" },
-                                    sets: { type: "INTEGER" }
-                                },
-                                required: ["name", "duration", "reps", "sets"]
-                            }
-                        }
-                    }
-                };
-
-                const apiKey = ""; // Canvas runtime key
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
-
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                const result = await response.json();
-
-                if (result.candidates && result.candidates[0]?.content?.parts[0]?.text) {
-                    const parsedExercises = JSON.parse(result.candidates[0].content.parts[0].text);
-                    if (Array.isArray(parsedExercises) && parsedExercises.length > 0) {
-                        currentWorkout = parsedExercises.map(ex => ({
-                            name: ex.name || 'Übung',
-                            duration: parseInt(ex.duration) || 0,
-                            reps: ex.reps || '',
-                            sets: parseInt(ex.sets) || 1
-                        }));
-                        renderExerciseList();
-                        routineSelect.value = 'custom';
-                    } else {
-                        alert('Konnte keine Übungen im Bild erkennen.');
-                    }
-                } else {
-                    alert('Fehler bei der Bildanalyse. Bitte versuche es mit einem klareren Foto.');
-                }
-
-            } catch (err) {
-                console.error("AI Image scan error:", err);
-                alert('Fehler beim Analysieren des Fotos: ' + err.message);
-            } finally {
-                imageLoading.classList.add('hidden');
-            }
-        });
-
-        // Toggle Sound
+        // Sound Toggle
         toggleSoundBtn.addEventListener('click', () => {
             soundEnabled = !soundEnabled;
             if (soundEnabled) {
@@ -594,25 +577,23 @@
             }
         });
 
-        // START WORKOUT PIPELINE
+        // START WORKOUT
         startWorkoutBtn.addEventListener('click', () => {
             initAudio();
             totalRounds = parseInt(totalRoundsInput.value) || 1;
             defaultRestTime = parseInt(defaultRestInput.value) || 0;
 
             if (currentWorkout.length === 0) {
-                alert('Bitte füge mindestens eine Übung hinzu.');
+                showStatus('Bitte mindestens 1 Übung hinzufügen.', 'error');
                 return;
             }
 
-            // Build Queue with direct sets repetition
             queue = [];
             for (let r = 1; r <= totalRounds; r++) {
                 currentWorkout.forEach((ex, idx) => {
                     const setsCount = ex.sets || 1;
                     
                     for (let s = 1; s <= setsCount; s++) {
-                        // Work Phase
                         queue.push({
                             type: 'work',
                             name: ex.name,
@@ -626,7 +607,6 @@
                             totalEx: currentWorkout.length
                         });
 
-                        // Determine next exercise/set for preview during rest
                         let nextName = '';
                         if (s < setsCount) {
                             nextName = `${ex.name} (Satz ${s + 1}/${setsCount})`;
@@ -638,11 +618,9 @@
                             nextName = `Runde ${r+1}: ${firstEx.name}`;
                         }
 
-                        // Check if this is the very last phase of entire workout
-                        const isLastPhaseOfWorkout = (r === totalRounds && idx === currentWorkout.length - 1 && s === setsCount);
+                        const isLastPhase = (r === totalRounds && idx === currentWorkout.length - 1 && s === setsCount);
 
-                        // Pause Phase
-                        if (defaultRestTime > 0 && !isLastPhaseOfWorkout) {
+                        if (defaultRestTime > 0 && !isLastPhase) {
                             queue.push({
                                 type: 'rest',
                                 name: 'Pause',
@@ -663,7 +641,6 @@
             startPhase();
         });
 
-        // Start Phase
         function startPhase() {
             clearInterval(timerInterval);
             isPaused = false;
@@ -672,7 +649,6 @@
             const current = queue[currentQueueIndex];
             const next = queue[currentQueueIndex + 1];
 
-            // Set UI for phase
             roundIndicator.textContent = current.totalRounds > 1 ? `Zirkel-Runde ${current.round} von ${current.totalRounds}` : 'Workout Aktiv';
             currentTitle.textContent = current.name;
 
@@ -697,7 +673,6 @@
                 currentSubtext.textContent = `Als nächstes: ${current.nextName}`;
             }
 
-            // Next Up Card
             if (next) {
                 const nextSetLabel = (next.type === 'work' && next.totalSets > 1) ? ` (Satz ${next.set}/${next.totalSets})` : '';
                 nextTitle.textContent = next.type === 'rest' ? 'Pause' : `${next.name}${nextSetLabel}`;
@@ -710,7 +685,6 @@
             timeRemaining = current.duration;
             initialPhaseDuration = current.duration;
 
-            // Handle non-timed exercises (reps only)
             if (timeRemaining <= 0) {
                 timeDisplay.textContent = "GO!";
                 updateProgressRing(1);
@@ -719,18 +693,14 @@
 
             updateTimeDisplay();
             updateProgressRing(1);
-
-            // High Frequency Beep at Phase Start
             playBeep(880, 'triangle', 0.25);
 
-            // Timer Loop
             timerInterval = setInterval(() => {
                 if (!isPaused) {
                     timeRemaining--;
                     updateTimeDisplay();
                     updateProgressRing(timeRemaining / initialPhaseDuration);
 
-                    // Countdown Beeps (3, 2, 1)
                     if (timeRemaining <= 3 && timeRemaining > 0) {
                         playBeep(440, 'sine', 0.12);
                     }
@@ -748,12 +718,9 @@
                 currentQueueIndex++;
                 startPhase();
             } else {
-                // Workout Complete
                 playBeep(523.25, 'sine', 0.2);
                 setTimeout(() => playBeep(659.25, 'sine', 0.2), 150);
                 setTimeout(() => playBeep(783.99, 'sine', 0.4), 300);
-                
-                alert('Herzlichen Glückwunsch! Workout erfolgreich beendet!');
                 exitTimer();
             }
         }
@@ -812,13 +779,28 @@
         }
 
         cancelBtn.addEventListener('click', () => {
-            if (confirm('Möchtest du das Workout wirklich abbrechen?')) {
-                exitTimer();
-            }
+            exitTimer();
         });
 
-        // Initialize with Athletik Kreis Preset
-        loadPreset('preset-athletik');
+        function initLoad() {
+            try {
+                const saved = localStorage.getItem('flexitimer_saved_workout');
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    if (parsed && Array.isArray(parsed.exercises) && parsed.exercises.length > 0) {
+                        currentWorkout = parsed.exercises;
+                        if (parsed.rounds) totalRoundsInput.value = parsed.rounds;
+                        if (parsed.rest) defaultRestInput.value = parsed.rest;
+                        routineSelect.value = 'custom';
+                        renderExerciseList();
+                        return;
+                    }
+                }
+            } catch (e) {}
+            loadPreset('preset-athletik');
+        }
+
+        initLoad();
     </script>
 </body>
 </html>
