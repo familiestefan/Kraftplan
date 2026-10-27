@@ -1,4 +1,4 @@
-```html
+
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -23,7 +23,7 @@
     <header class="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-900/50 backdrop-blur">
         <div class="flex items-center gap-3">
             <i class="fa-solid fa-stopwatch text-indigo-500 text-2xl"></i>
-            <h1 class="text-xl font-bold tracking-wide">FlexiTimer Pro</h1>
+            <h1 class="text-xl font-bold tracking-wide">Oles FlexTimer</h1>
         </div>
         <button id="toggle-sound-btn" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm flex items-center gap-2 transition">
             <i id="sound-icon" class="fa-solid fa-volume-high text-emerald-400"></i>
@@ -220,6 +220,7 @@
         let initialPhaseDuration = 0;
         let isPaused = false;
         let soundEnabled = true;
+        let announcedHalfway = false;
 
         let audioCtx = null;
 
@@ -227,254 +228,256 @@
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
         }
 
-        function playBeep(freq = 600, type = 'sine', duration = 0.15) {
+        // Sprachausgabe für "Halbzeit"
+        function speakHalfway() {
+            if (!soundEnabled) return;
+            try {
+                if ('speechSynthesis' in window) {
+                    window.speechSynthesis.cancel(); // Vorherige Sprache abbrechen
+                    const utterance = new SpeechSynthesisUtterance('Halbzeit');
+                    utterance.lang = 'de-DE';
+                    utterance.rate = 1.0;
+                    utterance.volume = 1.0;
+                    window.speechSynthesis.speak(utterance);
+                }
+            } catch (e) {}
+        }
+
+        // Neue flexiblere und lautere Beep-Funktion
+        function playBeep(freq = 600, type = 'square', duration = 0.15, volume = 0.9) {
             if (!soundEnabled) return;
             try {
                 initAudio();
                 const osc = audioCtx.createOscillator();
                 const gain = audioCtx.createGain();
+                
+                // Square/Triangle Welle ist drastisch lauter & prägnanter als Sine
                 osc.type = type;
-                osc.frequency.value = freq;
-                gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+                // Viel höhere Lautstärke (0.9 max)
+                gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
                 osc.connect(gain);
                 gain.connect(audioCtx.destination);
+
                 osc.start();
                 osc.stop(audioCtx.currentTime + duration);
             } catch (e) {}
         }
 
         // DOM Elements
-        const viewSetup = document.getElementById('view-setup');
-        const viewTimer = document.getElementById('view-timer');
         const routineSelect = document.getElementById('routine-select');
-        const exportJsonBtn = document.getElementById('export-json-btn');
-        const importJsonFile = document.getElementById('import-json-file');
+        const defaultRestInput = document.getElementById('default-rest');
+        const totalRoundsInput = document.getElementById('total-rounds');
+        const exerciseList = document.getElementById('exercise-list');
+        const exerciseCount = document.getElementById('exercise-count');
+        const addExerciseBtn = document.getElementById('add-exercise-btn');
+        const startWorkoutBtn = document.getElementById('start-workout-btn');
         const documentFileInput = document.getElementById('document-file-input');
         const fileLabel = document.getElementById('file-label');
         const statusMessage = document.getElementById('status-message');
-        const defaultRestInput = document.getElementById('default-rest');
-        const totalRoundsInput = document.getElementById('total-rounds');
-        const exerciseListEl = document.getElementById('exercise-list');
-        const addExerciseBtn = document.getElementById('add-exercise-btn');
-        const startWorkoutBtn = document.getElementById('start-workout-btn');
-        const exerciseCountEl = document.getElementById('exercise-count');
+        const exportJsonBtn = document.getElementById('export-json-btn');
+        const importJsonFile = document.getElementById('import-json-file');
 
-        // Timer View Elements
+        const viewSetup = document.getElementById('view-setup');
+        const viewTimer = document.getElementById('view-timer');
+
+        const toggleSoundBtn = document.getElementById('toggle-sound-btn');
+        const soundIcon = document.getElementById('sound-icon');
+        const soundText = document.getElementById('sound-text');
+
         const phaseBadge = document.getElementById('phase-badge');
         const roundIndicator = document.getElementById('round-indicator');
         const currentTitle = document.getElementById('current-title');
         const currentSubtext = document.getElementById('current-subtext');
         const timeDisplay = document.getElementById('time-display');
         const repsDisplay = document.getElementById('reps-display');
-        const timerProgress = document.getElementById('timer-progress');
         const nextTitle = document.getElementById('next-title');
         const nextDuration = document.getElementById('next-duration');
+        const timerProgress = document.getElementById('timer-progress');
+
+        const prevBtn = document.getElementById('prev-btn');
         const pauseBtn = document.getElementById('pause-btn');
         const pauseIcon = document.getElementById('pause-icon');
-        const prevBtn = document.getElementById('prev-btn');
         const nextBtn = document.getElementById('next-btn');
-        const cancelBtn = document.getElementById('cancel-workout-btn');
-        const toggleSoundBtn = document.getElementById('toggle-sound-btn');
-        const soundIcon = document.getElementById('sound-icon');
-        const soundText = document.getElementById('sound-text');
+        const cancelWorkoutBtn = document.getElementById('cancel-workout-btn');
+
+        // INITIALIZATION
+        window.addEventListener('DOMContentLoaded', () => {
+            loadPreset('preset-athletik');
+        });
+
+        routineSelect.addEventListener('change', (e) => {
+            if (e.target.value in PRESETS) {
+                loadPreset(e.target.value);
+            }
+        });
 
         function loadPreset(key) {
-            if (PRESETS[key]) {
-                const data = PRESETS[key];
-                totalRoundsInput.value = data.rounds;
-                defaultRestInput.value = data.rest;
-                currentWorkout = JSON.parse(JSON.stringify(data.exercises));
-            }
-            renderExerciseList();
+            const preset = PRESETS[key];
+            if (!preset) return;
+            
+            defaultRestTime = preset.rest;
+            totalRounds = preset.rounds;
+            
+            defaultRestInput.value = defaultRestTime;
+            totalRoundsInput.value = totalRounds;
+
+            currentWorkout = JSON.parse(JSON.stringify(preset.exercises));
+            renderExercises();
         }
 
-        function renderExerciseList() {
-            exerciseListEl.innerHTML = '';
-            currentWorkout.forEach((ex, idx) => {
-                const item = document.createElement('div');
-                item.className = 'bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col gap-2';
-                item.innerHTML = `
+        defaultRestInput.addEventListener('change', (e) => {
+            defaultRestTime = parseInt(e.target.value) || 30;
+        });
+
+        totalRoundsInput.addEventListener('change', (e) => {
+            totalRounds = parseInt(e.target.value) || 1;
+        });
+
+        function showStatus(msg, isError = false) {
+            statusMessage.textContent = msg;
+            statusMessage.className = `mt-2 p-2.5 rounded-xl text-xs text-center font-medium ${isError ? 'bg-red-500/20 text-red-300 border border-red-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'}`;
+            statusMessage.classList.remove('hidden');
+        }
+
+        function renderExercises() {
+            exerciseList.innerHTML = '';
+            exerciseCount.textContent = `${currentWorkout.length} Übungen`;
+
+            currentWorkout.forEach((ex, index) => {
+                const card = document.createElement('div');
+                card.className = 'bg-slate-950 border border-slate-800 p-3 rounded-xl flex flex-col gap-2 relative group hover:border-slate-700 transition';
+
+                card.innerHTML = `
                     <div class="flex items-center justify-between gap-2">
-                        <input type="text" data-idx="${idx}" data-field="name" value="${ex.name}" placeholder="Übungsname" 
-                            class="ex-input font-medium bg-transparent text-slate-100 text-sm focus:outline-none focus:border-b border-indigo-500 flex-1">
-                        <button class="delete-ex-btn text-slate-600 hover:text-red-400 p-1 rounded transition" data-idx="${idx}">
-                            <i class="fa-solid fa-trash-can text-sm"></i>
+                        <span class="text-xs font-bold text-slate-500 w-5">#${index + 1}</span>
+                        <input type="text" value="${ex.name}" data-index="${index}" data-field="name" class="ex-input bg-transparent font-semibold text-sm text-slate-100 focus:outline-none focus:border-b border-indigo-500 flex-1 truncate" placeholder="Übungsname">
+                        <button data-index="${index}" class="delete-btn text-slate-600 hover:text-red-400 p-1 rounded transition">
+                            <i class="fa-solid fa-trash-can text-xs"></i>
                         </button>
                     </div>
-                    <div class="flex flex-wrap items-center gap-2 text-xs">
-                        <div class="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1">
-                            <i class="fa-regular fa-clock text-slate-400"></i>
-                            <input type="number" data-idx="${idx}" data-field="duration" value="${ex.duration}" min="0" step="5" 
-                                class="ex-input w-10 bg-transparent text-right text-emerald-400 font-bold focus:outline-none">
-                            <span class="text-[10px] text-slate-500">s</span>
+
+                    <div class="grid grid-cols-3 gap-2 text-xs pt-1 border-t border-slate-900">
+                        <div>
+                            <label class="text-[10px] text-slate-500 block">Dauer (Sek)</label>
+                            <input type="number" value="${ex.duration}" min="0" data-index="${index}" data-field="duration" class="ex-input w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-emerald-400 font-mono font-bold focus:outline-none">
                         </div>
-                        <div class="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1">
-                            <input type="text" data-idx="${idx}" data-field="reps" value="${ex.reps || ''}" placeholder="z.B. 40 Wdh" 
-                                class="ex-input w-20 bg-transparent text-center text-amber-400 font-bold focus:outline-none">
+                        <div>
+                            <label class="text-[10px] text-slate-500 block">Wdh (Text)</label>
+                            <input type="text" value="${ex.reps || ''}" data-index="${index}" data-field="reps" class="ex-input w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-amber-400 font-mono font-bold focus:outline-none" placeholder="z.B. 40 Wdh">
                         </div>
-                        <div class="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1">
-                            <span class="text-[10px] text-slate-400">Sätze:</span>
-                            <input type="number" data-idx="${idx}" data-field="sets" value="${ex.sets || 1}" min="1" max="20" 
-                                class="ex-input w-8 bg-transparent text-center text-indigo-400 font-bold focus:outline-none">
-                            <span class="text-[10px] text-slate-400">x</span>
+                        <div>
+                            <label class="text-[10px] text-slate-500 block">Sätze (x)</label>
+                            <input type="number" value="${ex.sets || 1}" min="1" max="10" data-index="${index}" data-field="sets" class="ex-input w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-indigo-400 font-mono font-bold focus:outline-none">
                         </div>
                     </div>
                 `;
-                exerciseListEl.appendChild(item);
+
+                exerciseList.appendChild(card);
             });
 
-            exerciseCountEl.textContent = `${currentWorkout.length} Übungen`;
-            saveCurrentState();
-
+            // Input handlers
             document.querySelectorAll('.ex-input').forEach(input => {
-                const handler = (e) => {
-                    const idx = parseInt(e.target.dataset.idx);
+                input.addEventListener('input', (e) => {
+                    const idx = e.target.dataset.index;
                     const field = e.target.dataset.field;
-                    let val = e.target.value;
-                    if (field === 'duration' || field === 'sets') val = parseInt(val) || 0;
-                    if (currentWorkout[idx]) {
-                        currentWorkout[idx][field] = val;
+                    if (field === 'duration' || field === 'sets') {
+                        currentWorkout[idx][field] = parseInt(e.target.value) || 0;
+                    } else {
+                        currentWorkout[idx][field] = e.target.value;
                     }
-                    saveCurrentState();
-                };
-                input.addEventListener('input', handler);
-                input.addEventListener('change', handler);
+                });
             });
 
-            document.querySelectorAll('.delete-ex-btn').forEach(btn => {
+            // Delete handlers
+            document.querySelectorAll('.delete-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
-                    const idx = parseInt(e.currentTarget.dataset.idx);
+                    const idx = e.currentTarget.dataset.index;
                     currentWorkout.splice(idx, 1);
-                    renderExerciseList();
+                    renderExercises();
                 });
             });
         }
 
-        function saveCurrentState() {
-            try {
-                localStorage.setItem('flexitimer_saved_workout', JSON.stringify({
-                    rounds: parseInt(totalRoundsInput.value) || 1,
-                    rest: parseInt(defaultRestInput.value) || 30,
-                    exercises: currentWorkout
-                }));
-            } catch (e) {}
-        }
+        addExerciseBtn.addEventListener('click', () => {
+            currentWorkout.push({
+                name: 'Neue Übung',
+                duration: 45,
+                reps: '',
+                sets: 1
+            });
+            renderExercises();
+        });
 
-        // Export JSON Plan
+        // JSON EXPORT & IMPORT
         exportJsonBtn.addEventListener('click', () => {
+            if (currentWorkout.length === 0) {
+                showStatus('Keine Übungen zum Exportieren vorhanden!', true);
+                return;
+            }
+
+            const exportData = {
+                rest: parseInt(defaultRestInput.value) || 30,
+                rounds: parseInt(totalRoundsInput.value) || 1,
+                exercises: currentWorkout
+            };
+
+            const jsonStr = JSON.stringify(exportData, null, 2);
+            
             try {
-                const workoutData = {
-                    title: "Mein Trainingsplan",
-                    rounds: parseInt(totalRoundsInput.value) || 1,
-                    rest: parseInt(defaultRestInput.value) || 30,
-                    exercises: currentWorkout
-                };
-                const jsonString = JSON.stringify(workoutData, null, 2);
-                const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(jsonString);
-                const downloadLink = document.createElement('a');
-                downloadLink.setAttribute('href', dataUri);
-                downloadLink.setAttribute('download', `trainingsplan_${Date.now()}.json`);
-                document.body.appendChild(downloadLink);
-                downloadLink.click();
-                document.body.removeChild(downloadLink);
-                showStatus('Plan erfolgreich als JSON heruntergeladen!', 'success');
+                const blob = new Blob([jsonStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Trainingsplan_${new Date().toISOString().slice(0, 10)}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showStatus('Plan erfolgreich als JSON exportiert!');
             } catch (err) {
-                showStatus('Export-Fehler: Plan in Zwischenablage kopiert.', 'info');
+                navigator.clipboard.writeText(jsonStr);
+                showStatus('Download blockiert - Plan wurde in Zwischenablage kopiert!');
             }
         });
 
-        // Import JSON Plan
         importJsonFile.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
+
             const reader = new FileReader();
-            reader.onload = function(event) {
+            reader.onload = (event) => {
                 try {
                     const imported = JSON.parse(event.target.result);
-                    if (imported && Array.isArray(imported.exercises)) {
+                    if (imported.exercises && Array.isArray(imported.exercises)) {
                         currentWorkout = imported.exercises;
-                        if (imported.rounds) totalRoundsInput.value = imported.rounds;
-                        if (imported.rest) defaultRestInput.value = imported.rest;
+                        if (imported.rest !== undefined) defaultRestInput.value = imported.rest;
+                        if (imported.rounds !== undefined) totalRoundsInput.value = imported.rounds;
+                        defaultRestTime = parseInt(defaultRestInput.value) || 30;
+                        totalRounds = parseInt(totalRoundsInput.value) || 1;
+                        
                         routineSelect.value = 'custom';
-                        renderExerciseList();
-                        showStatus('JSON Plan erfolgreich geladen!', 'success');
+                        renderExercises();
+                        showStatus('JSON-Plan erfolgreich geladen!');
+                    } else {
+                        showStatus('Ungültiges JSON-Format!', true);
                     }
                 } catch (err) {
-                    showStatus('Ungültiges JSON Format.', 'error');
+                    showStatus('Fehler beim Lesen der JSON-Datei!', true);
                 }
             };
             reader.readAsText(file);
         });
 
-        // Generic Parser for Text Line or Table Row
-        function parseRowText(rawText) {
-            if (!rawText || !rawText.trim()) return null;
-
-            let text = rawText.trim();
-
-            // Ignore header rows often found below Pause definitions (e.g., "WDH/Zeit", "Übung", etc.)
-            const isHeaderRow = /^(WDH|Zeit|Übung|Exercise|Reps|Duration|Sets|Sätze)/i.test(text);
-            if (isHeaderRow) return null;
-
-            // Check if this row specifies a rest/pause time (e.g. "Pause 30 sek.")
-            const pauseMatch = text.match(/^Pause\s*(\d+)\s*(sek|sec|sekunden|s)?/i);
-            if (pauseMatch) {
-                const restSecs = parseInt(pauseMatch[1]);
-                if (!isNaN(restSecs)) {
-                    defaultRestInput.value = restSecs;
-                }
-                return null; // Don't add Pause as a exercise entry
-            }
-
-            let duration = 0;
-            let reps = '';
-            let sets = 1;
-
-            // Check sets multiplier (e.g. 2x, 3x)
-            const setsMatch = text.match(/(\d+)\s*x/i);
-            if (setsMatch) {
-                sets = parseInt(setsMatch[1]) || 1;
-                text = text.replace(/(\d+)\s*x/i, '').trim();
-            }
-
-            // Check for minutes / seconds
-            const minMatch = text.match(/(\d+)\s*(min|minute|minuten)/i);
-            const secMatch = text.match(/(\d+)\s*(sek|sec|sekunden|s\b)/i);
-
-            if (minMatch) {
-                duration += parseInt(minMatch[1]) * 60;
-                text = text.replace(/(\d+)\s*(min|minute|minuten)/i, '').trim();
-            }
-            if (secMatch) {
-                duration += parseInt(secMatch[1]);
-                text = text.replace(/(\d+)\s*(sek|sec|sekunden|s\b)/i, '').trim();
-            }
-
-            // Check for plain repetitions (e.g., 40 Wdh, 40 Situps)
-            const repsMatch = text.match(/(\d+)\s*(wdh|wiederholungen|stk)/i);
-            if (repsMatch) {
-                reps = `${repsMatch[1]} Wdh`;
-                text = text.replace(/(\d+)\s*(wdh|wiederholungen|stk)/i, '').trim();
-            } else if (!duration && !minMatch && !secMatch) {
-                const leadingNum = text.match(/^(\d+)\b/);
-                if (leadingNum) {
-                    reps = `${leadingNum[1]} Wdh`;
-                    text = text.replace(/^(\d+)\b/, '').trim();
-                }
-            }
-
-            // Clean exercise name
-            let name = text.replace(/^[-–:\.,]\s*/, '').trim();
-
-            if (!name) name = 'Übung';
-
-            return { name, duration, reps, sets };
-        }
-
-        // Import Documents (.txt, .xlsx, .csv)
+        // PARSER FÜR TXT, CSV UND EXCEL DATEIEN
         documentFileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -484,151 +487,187 @@
 
             if (ext === 'txt' || ext === 'csv') {
                 const reader = new FileReader();
-                reader.onload = function(event) {
-                    const lines = event.target.result.split(/\r?\n/);
-                    
-                    // Suche den Index der ersten "Pause"-Zeile und ignoriere alles davor
-                    let firstPauseIndex = lines.findIndex(line => /^Pause\s*\d+/i.test(line.trim()));
-                    const validLines = firstPauseIndex !== -1 ? lines.slice(firstPauseIndex) : lines;
-
-                    const parsedList = [];
-                    validLines.forEach(line => {
-                        const parsed = parseRowText(line);
-                        if (parsed && parsed.name) parsedList.push(parsed);
-                    });
-                    if (parsedList.length > 0) {
-                        currentWorkout = parsedList;
-                        renderExerciseList();
-                        routineSelect.value = 'custom';
-                        showStatus(`${parsedList.length} Übungen aus Text-Datei eingelesen!`, 'success');
-                    } else {
-                        showStatus('Keine Übungen in der Textdatei gefunden.', 'error');
-                    }
-                };
+                reader.onload = (event) => parseTextOrCsvContent(event.target.result);
                 reader.readAsText(file);
             } else if (ext === 'xlsx' || ext === 'xls') {
                 const reader = new FileReader();
-                reader.onload = function(event) {
+                reader.onload = (event) => {
                     try {
                         const data = new Uint8Array(event.target.result);
                         const workbook = XLSX.read(data, { type: 'array' });
-                        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                        const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
-
-                        // Wandle jede Zeile in Text um
-                        const rawLines = jsonData.map(row => (row || []).join(' '));
-                        
-                        // Suche den Index der ersten "Pause"-Zeile und ignoriere alles davor
-                        let firstPauseIndex = rawLines.findIndex(line => /^Pause\s*\d+/i.test(line.trim()));
-                        const validLines = firstPauseIndex !== -1 ? rawLines.slice(firstPauseIndex) : rawLines;
-
-                        const parsedList = [];
-                        validLines.forEach(lineText => {
-                            const parsed = parseRowText(lineText);
-                            if (parsed && parsed.name) parsedList.push(parsed);
-                        });
-
-                        if (parsedList.length > 0) {
-                            currentWorkout = parsedList;
-                            renderExerciseList();
-                            routineSelect.value = 'custom';
-                            showStatus(`${parsedList.length} Übungen aus Excel eingelesen!`, 'success');
-                        } else {
-                            showStatus('Keine Übungen in der Excel-Tabelle erkannt.', 'error');
-                        }
+                        const firstSheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[firstSheetName];
+                        const csvContent = XLSX.utils.sheet_to_csv(worksheet);
+                        parseTextOrCsvContent(csvContent);
                     } catch (err) {
-                        showStatus('Fehler beim Lesen der Excel-Datei.', 'error');
+                        showStatus("Fehler beim Einlesen der Excel-Datei", true);
                     }
                 };
                 reader.readAsArrayBuffer(file);
             }
         });
 
-        function showStatus(msg, type = 'info') {
-            statusMessage.textContent = msg;
-            statusMessage.classList.remove('hidden', 'bg-emerald-950/50', 'text-emerald-400', 'bg-red-950/50', 'text-red-400');
-            if (type === 'success') {
-                statusMessage.classList.add('bg-emerald-950/50', 'text-emerald-400', 'border', 'border-emerald-800');
+        function parseTextOrCsvContent(content) {
+            const rawLines = content.split(/\r?\n/);
+            
+            // 1. Suche nach der ERSTEN Zeile, die mit "Pause" beginnt
+            let pauseLineIndex = -1;
+            for (let i = 0; i < rawLines.length; i++) {
+                if (rawLines[i].trim().toLowerCase().startsWith('pause')) {
+                    pauseLineIndex = i;
+                    break;
+                }
+            }
+
+            let linesToProcess = [];
+            if (pauseLineIndex !== -1) {
+                // Pausenzeit extrahieren (z. B. "Pause 30 sek.")
+                const pauseMatch = rawLines[pauseLineIndex].match(/(\d+)/);
+                if (pauseMatch) {
+                    defaultRestTime = parseInt(pauseMatch[1]);
+                    defaultRestInput.value = defaultRestTime;
+                }
+                // Alles VOR der ersten Pause ignorieren
+                linesToProcess = rawLines.slice(pauseLineIndex + 1);
             } else {
-                statusMessage.classList.add('bg-red-950/50', 'text-red-400', 'border', 'border-red-800');
+                linesToProcess = rawLines;
+            }
+
+            const parsedExercises = [];
+
+            linesToProcess.forEach(line => {
+                const trimmed = line.trim();
+                if (!trimmed) return;
+
+                const lower = trimmed.toLowerCase();
+
+                // 2. Tabellenköpfe & Spaltenüberschriften überspringen
+                if (lower.includes('wdh') && lower.includes('übung')) return;
+                if (lower.includes('zeit') && lower.includes('übung')) return;
+                if (lower.startsWith('wdh/zeit') || lower.startsWith('übung')) return;
+
+                let duration = 0;
+                let reps = '';
+                let sets = 1;
+                let name = trimmed;
+
+                const parts = trimmed.split(/,|\t|;/).map(p => p.trim()).filter(Boolean);
+
+                if (parts.length >= 2) {
+                    const firstCol = parts[0];
+                    const secondCol = parts[1];
+
+                    if (/^\d+\s*wdh/i.test(firstCol) || /^\d+$/ .test(firstCol)) {
+                        reps = firstCol;
+                        name = secondCol;
+                    } else if (firstCol.includes('min') || firstCol.includes('sek') || firstCol.includes('s')) {
+                        const parsedDuration = parseTimeString(firstCol);
+                        duration = parsedDuration.duration;
+                        sets = parsedDuration.sets;
+                        name = secondCol;
+                    } else {
+                        name = firstCol;
+                        const parsedDuration = parseTimeString(secondCol);
+                        duration = parsedDuration.duration;
+                        sets = parsedDuration.sets;
+                        if (duration === 0) reps = secondCol;
+                    }
+                } else {
+                    const minMatch = trimmed.match(/(\d+)\s*min/i);
+                    const sekMatch = trimmed.match(/(\d+)\s*sek/i);
+                    const repsMatch = trimmed.match(/(\d+)\s*wdh/i);
+                    const setsMatch = trimmed.match(/(\d+)x/i);
+
+                    if (minMatch) duration += parseInt(minMatch[1]) * 60;
+                    if (sekMatch) duration += parseInt(sekMatch[1]);
+                    if (repsMatch) reps = `${repsMatch[1]} Wdh`;
+                    if (setsMatch) sets = parseInt(setsMatch[1]);
+
+                    name = trimmed
+                        .replace(/\d+\s*min/gi, '')
+                        .replace(/\d+\s*sek/gi, '')
+                        .replace(/\d+\s*wdh/gi, '')
+                        .replace(/\d+x/gi, '')
+                        .trim();
+                }
+
+                if (name.length > 0) {
+                    parsedExercises.push({
+                        name: name.replace(/^[,\t;-]+|[,\t;-]+$/g, '').trim(),
+                        duration: duration,
+                        reps: reps,
+                        sets: sets || 1
+                    });
+                }
+            });
+
+            if (parsedExercises.length > 0) {
+                currentWorkout = parsedExercises;
+                routineSelect.value = 'custom';
+                renderExercises();
+                showStatus(`${parsedExercises.length} Übungen erfolgreich geladen!`);
+            } else {
+                showStatus("Keine passenden Übungen gefunden.", true);
             }
         }
 
-        // Add Exercise
-        addExerciseBtn.addEventListener('click', () => {
-            currentWorkout.push({ name: 'Neue Übung', duration: 45, reps: '', sets: 1 });
-            renderExerciseList();
-        });
+        function parseTimeString(str) {
+            let duration = 0;
+            let sets = 1;
 
-        routineSelect.addEventListener('change', (e) => {
-            loadPreset(e.target.value);
-        });
+            const setsMatch = str.match(/(\d+)x/i);
+            if (setsMatch) sets = parseInt(setsMatch[1]);
 
-        // Sound Toggle
-        toggleSoundBtn.addEventListener('click', () => {
-            soundEnabled = !soundEnabled;
-            if (soundEnabled) {
-                soundIcon.className = 'fa-solid fa-volume-high text-emerald-400';
-                soundText.textContent = 'Ton An';
-                playBeep(800, 'sine', 0.1);
-            } else {
-                soundIcon.className = 'fa-solid fa-volume-xmark text-slate-500';
-                soundText.textContent = 'Ton Aus';
-            }
-        });
+            const minMatch = str.match(/(\d+)\s*min/i);
+            const sekMatch = str.match(/(\d+)\s*sek/i);
+
+            if (minMatch) duration += parseInt(minMatch[1]) * 60;
+            if (sekMatch) duration += parseInt(sekMatch[1]);
+
+            return { duration, sets };
+        }
 
         // START WORKOUT
         startWorkoutBtn.addEventListener('click', () => {
-            initAudio();
-            totalRounds = parseInt(totalRoundsInput.value) || 1;
-            defaultRestTime = parseInt(defaultRestInput.value) || 0;
-
             if (currentWorkout.length === 0) {
-                showStatus('Bitte mindestens 1 Übung hinzufügen.', 'error');
+                showStatus('Bitte füge mindestens eine Übung hinzu!', true);
                 return;
             }
 
+            initAudio();
+
+            // Queue aufbauen (Belastung + Pause)
             queue = [];
             for (let r = 1; r <= totalRounds; r++) {
-                currentWorkout.forEach((ex, idx) => {
-                    const setsCount = ex.sets || 1;
-                    
-                    for (let s = 1; s <= setsCount; s++) {
+                currentWorkout.forEach((ex, exIndex) => {
+                    const totalSets = ex.sets || 1;
+                    for (let s = 1; s <= totalSets; s++) {
+                        // Belastungsphase
                         queue.push({
                             type: 'work',
-                            name: ex.name,
+                            title: ex.name,
+                            subtext: totalSets > 1 ? `Satz ${s} von ${totalSets}` : '',
                             duration: ex.duration,
                             reps: ex.reps,
                             round: r,
                             totalRounds: totalRounds,
-                            set: s,
-                            totalSets: setsCount,
-                            exIndex: idx + 1,
+                            exIndex: exIndex + 1,
                             totalEx: currentWorkout.length
                         });
 
-                        let nextName = '';
-                        if (s < setsCount) {
-                            nextName = `${ex.name} (Satz ${s + 1}/${setsCount})`;
-                        } else if (idx < currentWorkout.length - 1) {
-                            const nextEx = currentWorkout[idx + 1];
-                            nextName = nextEx.sets > 1 ? `${nextEx.name} (1/${nextEx.sets})` : nextEx.name;
-                        } else if (r < totalRounds) {
-                            const firstEx = currentWorkout[0];
-                            nextName = `Runde ${r+1}: ${firstEx.name}`;
-                        }
-
-                        const isLastPhase = (r === totalRounds && idx === currentWorkout.length - 1 && s === setsCount);
-
-                        if (defaultRestTime > 0 && !isLastPhase) {
+                        // Pausenphase (ausser nach dem allerletzten Satz der allerletzten Runde)
+                        const isLastInWorkout = (r === totalRounds) && (exIndex === currentWorkout.length - 1) && (s === totalSets);
+                        if (!isLastInWorkout && defaultRestTime > 0) {
                             queue.push({
                                 type: 'rest',
-                                name: 'Pause',
+                                title: 'Pause',
+                                subtext: `Nächste Übung: ${s < totalSets ? ex.name : (currentWorkout[exIndex + 1]?.name || 'Nächste Runde')}`,
                                 duration: defaultRestTime,
                                 reps: '',
-                                nextName: nextName,
                                 round: r,
-                                totalRounds: totalRounds
+                                totalRounds: totalRounds,
+                                exIndex: exIndex + 1,
+                                totalEx: currentWorkout.length
                             });
                         }
                     }
@@ -636,54 +675,55 @@
             }
 
             currentQueueIndex = 0;
+            isPaused = false;
             viewSetup.classList.add('hidden');
             viewTimer.classList.remove('hidden');
+
             startPhase();
         });
 
         function startPhase() {
-            clearInterval(timerInterval);
-            isPaused = false;
-            updatePauseButtonUI();
+            if (timerInterval) clearInterval(timerInterval);
 
-            const current = queue[currentQueueIndex];
-            const next = queue[currentQueueIndex + 1];
+            const item = queue[currentQueueIndex];
+            timeRemaining = item.duration;
+            initialPhaseDuration = item.duration;
+            announcedHalfway = false;
 
-            roundIndicator.textContent = current.totalRounds > 1 ? `Zirkel-Runde ${current.round} von ${current.totalRounds}` : 'Workout Aktiv';
-            currentTitle.textContent = current.name;
+            // UI Update
+            roundIndicator.textContent = `Runde ${item.round} von ${item.totalRounds} • Übung ${item.exIndex}/${item.totalEx}`;
+            currentTitle.textContent = item.title;
+            currentSubtext.textContent = item.subtext;
 
-            if (current.type === 'work') {
-                const setLabel = current.totalSets > 1 ? ` (Satz ${current.set}/${current.totalSets})` : '';
-                phaseBadge.textContent = `Übung ${current.exIndex}/${current.totalEx}${setLabel}`;
+            if (item.type === 'work') {
+                phaseBadge.textContent = 'Belastung';
                 phaseBadge.className = 'px-4 py-1.5 rounded-full text-xs font-extrabold uppercase tracking-widest bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
-                timerProgress.classList.replace('stroke-amber-500', 'stroke-emerald-500');
-                
-                if (current.reps) {
-                    repsDisplay.textContent = current.reps;
-                    repsDisplay.classList.remove('hidden');
-                } else {
-                    repsDisplay.classList.add('hidden');
-                }
-                currentSubtext.textContent = current.duration > 0 ? '' : 'Führe die Wiederholungen aus';
+                timerProgress.classList.remove('stroke-amber-500');
+                timerProgress.classList.add('stroke-emerald-500');
             } else {
-                phaseBadge.textContent = 'Erholung / Pause';
+                phaseBadge.textContent = 'Pause';
                 phaseBadge.className = 'px-4 py-1.5 rounded-full text-xs font-extrabold uppercase tracking-widest bg-amber-500/20 text-amber-400 border border-amber-500/30';
-                timerProgress.classList.replace('stroke-emerald-500', 'stroke-amber-500');
-                repsDisplay.classList.add('hidden');
-                currentSubtext.textContent = `Als nächstes: ${current.nextName}`;
+                timerProgress.classList.remove('stroke-emerald-500');
+                timerProgress.classList.add('stroke-amber-500');
             }
 
-            if (next) {
-                const nextSetLabel = (next.type === 'work' && next.totalSets > 1) ? ` (Satz ${next.set}/${next.totalSets})` : '';
-                nextTitle.textContent = next.type === 'rest' ? 'Pause' : `${next.name}${nextSetLabel}`;
-                nextDuration.textContent = next.duration > 0 ? `${next.duration}s` : (next.reps || 'Wdh');
+            // Reps display
+            if (item.reps) {
+                repsDisplay.textContent = item.reps;
+                repsDisplay.classList.remove('hidden');
+            } else {
+                repsDisplay.classList.add('hidden');
+            }
+
+            // Next Up Banner
+            if (currentQueueIndex < queue.length - 1) {
+                const nextItem = queue[currentQueueIndex + 1];
+                nextTitle.textContent = `${nextItem.type === 'rest' ? 'Pause' : nextItem.title}`;
+                nextDuration.textContent = nextItem.duration > 0 ? `${nextItem.duration}s` : nextItem.reps || '0s';
             } else {
                 nextTitle.textContent = 'Workout Ende!';
-                nextDuration.textContent = '-';
+                nextDuration.textContent = '0s';
             }
-
-            timeRemaining = current.duration;
-            initialPhaseDuration = current.duration;
 
             if (timeRemaining <= 0) {
                 timeDisplay.textContent = "GO!";
@@ -693,7 +733,8 @@
 
             updateTimeDisplay();
             updateProgressRing(1);
-            playBeep(880, 'triangle', 0.25);
+            // Startsignal beim Phasenbeginn
+            playBeep(784, 'triangle', 0.2, 0.8);
 
             timerInterval = setInterval(() => {
                 if (!isPaused) {
@@ -701,13 +742,32 @@
                     updateTimeDisplay();
                     updateProgressRing(timeRemaining / initialPhaseDuration);
 
-                    if (timeRemaining <= 3 && timeRemaining > 0) {
-                        playBeep(440, 'sine', 0.12);
+                    // Halbzeit-Ansage: Sagt exakt bei der Hälfte der jeweiligen Übungsdauer "Halbzeit"
+                    if (initialPhaseDuration >= 10 && !announcedHalfway) {
+                        const halfwayTime = Math.floor(initialPhaseDuration / 2);
+                        if (timeRemaining === halfwayTime) {
+                            announcedHalfway = true;
+                            speakHalfway();
+                        }
+                    }
+
+                    // Signal-Logik:
+                    // 10 Sekunden vor Ende: Einzelner Beep zur Vorwarnung
+                    if (timeRemaining === 10) {
+                        playBeep(523.25, 'triangle', 0.15, 0.8); // C5
+                    } 
+                    // Countdown bei 5, 4, 3, 2, 1
+                    else if (timeRemaining <= 5 && timeRemaining > 0) {
+                        playBeep(659.25, 'square', 0.12, 0.9); // E5 (heller & prägnant)
                     }
 
                     if (timeRemaining <= 0) {
                         clearInterval(timerInterval);
-                        nextPhase();
+                        // Ton bei Null: Länger & andere Frequenz (G5 high pitch)
+                        playBeep(1046.5, 'square', 0.45, 1.0); // C6 hoch & laut
+                        setTimeout(() => {
+                            nextPhase();
+                        }, 200);
                     }
                 }
             }, 1000);
@@ -718,9 +778,11 @@
                 currentQueueIndex++;
                 startPhase();
             } else {
-                playBeep(523.25, 'sine', 0.2);
-                setTimeout(() => playBeep(659.25, 'sine', 0.2), 150);
-                setTimeout(() => playBeep(783.99, 'sine', 0.4), 300);
+                // Workout fertig Fanfare
+                playBeep(523.25, 'square', 0.2, 0.9);
+                setTimeout(() => playBeep(659.25, 'square', 0.2, 0.9), 150);
+                setTimeout(() => playBeep(783.99, 'square', 0.2, 0.9), 300);
+                setTimeout(() => playBeep(1046.5, 'square', 0.5, 1.0), 450);
                 exitTimer();
             }
         }
@@ -732,6 +794,12 @@
             }
         }
 
+        function exitTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+            viewTimer.classList.add('hidden');
+            viewSetup.classList.remove('hidden');
+        }
+
         function updateTimeDisplay() {
             const mins = Math.floor(timeRemaining / 60);
             const secs = timeRemaining % 60;
@@ -739,13 +807,17 @@
         }
 
         function updateProgressRing(fraction) {
-            const circumference = 2 * Math.PI * 110; 
+            const circle = timerProgress;
+            const radius = circle.r.baseVal.value;
+            const circumference = 2 * Math.PI * radius;
             const offset = circumference - (fraction * circumference);
-            timerProgress.style.strokeDasharray = `${circumference}`;
-            timerProgress.style.strokeDashoffset = offset;
+            circle.style.strokeDasharray = `${circumference} ${circumference}`;
+            circle.style.strokeDashoffset = offset;
         }
 
-        function updatePauseButtonUI() {
+        // CONTROLS
+        pauseBtn.addEventListener('click', () => {
+            isPaused = !isPaused;
             if (isPaused) {
                 pauseIcon.className = 'fa-solid fa-play';
                 pauseBtn.classList.replace('bg-amber-500', 'bg-emerald-500');
@@ -755,53 +827,30 @@
                 pauseBtn.classList.replace('bg-emerald-500', 'bg-amber-500');
                 pauseBtn.classList.replace('hover:bg-emerald-400', 'hover:bg-amber-400');
             }
-        }
-
-        pauseBtn.addEventListener('click', () => {
-            isPaused = !isPaused;
-            updatePauseButtonUI();
         });
 
         nextBtn.addEventListener('click', () => {
-            clearInterval(timerInterval);
             nextPhase();
         });
 
         prevBtn.addEventListener('click', () => {
-            clearInterval(timerInterval);
             prevPhase();
         });
 
-        function exitTimer() {
-            clearInterval(timerInterval);
-            viewTimer.classList.add('hidden');
-            viewSetup.classList.remove('hidden');
-        }
-
-        cancelBtn.addEventListener('click', () => {
+        cancelWorkoutBtn.addEventListener('click', () => {
             exitTimer();
         });
 
-        function initLoad() {
-            try {
-                const saved = localStorage.getItem('flexitimer_saved_workout');
-                if (saved) {
-                    const parsed = JSON.parse(saved);
-                    if (parsed && Array.isArray(parsed.exercises) && parsed.exercises.length > 0) {
-                        currentWorkout = parsed.exercises;
-                        if (parsed.rounds) totalRoundsInput.value = parsed.rounds;
-                        if (parsed.rest) defaultRestInput.value = parsed.rest;
-                        routineSelect.value = 'custom';
-                        renderExerciseList();
-                        return;
-                    }
-                }
-            } catch (e) {}
-            loadPreset('preset-athletik');
-        }
-
-        initLoad();
+        toggleSoundBtn.addEventListener('click', () => {
+            soundEnabled = !soundEnabled;
+            if (soundEnabled) {
+                soundIcon.className = 'fa-solid fa-volume-high text-emerald-400';
+                soundText.textContent = 'Ton An';
+            } else {
+                soundIcon.className = 'fa-solid fa-volume-xmark text-red-400';
+                soundText.textContent = 'Stumm';
+            }
+        });
     </script>
 </body>
 </html>
-```
